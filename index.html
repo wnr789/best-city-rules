@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Best City | กฎการเล่น</title>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;700&family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EEF0EC;--card:#fff;--ink:#1B2420;--mute:#5E6B64;--green:#0F6B4F;--red:#C8312B;--line:#D5DAD4}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 "Noto Sans Thai",system-ui,sans-serif}
+header{background:var(--green);color:#fff;padding:28px 16px 22px;text-align:center}
+h1{font:700 clamp(28px,6vw,44px)/1.2 Prompt,sans-serif;margin:0}
+header p{margin:6px 0 0;opacity:.9}
+.bar{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 16px;border-bottom:1px solid var(--line)}
+.wrap{max-width:1100px;margin:0 auto}
+#q{width:100%;padding:13px 16px;font:inherit;border:2px solid var(--green);border-radius:10px;background:#fff}
+#q:focus{outline:3px solid #F2C23088}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-top:10px}
+.chip{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 14px;font:inherit;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+#count{color:var(--mute);margin:14px 0 8px;font-size:14px}
+#list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;padding-bottom:48px}
+.card{background:var(--card);border-radius:10px;overflow:hidden;border-left:6px solid var(--c);display:flex;flex-direction:column}
+.card img,.ph{width:100%;height:150px;object-fit:cover;display:block}
+.ph{display:grid;place-items:center;font-size:44px;background:color-mix(in srgb,var(--c) 14%,#fff)}
+.body{padding:14px 16px 16px;display:flex;flex-direction:column;gap:8px;flex:1}
+.cat{font-size:13px;font-weight:600;color:var(--c)}
+h2{font:500 18px/1.4 Prompt,sans-serif;margin:0}
+.body p{margin:0;color:#34413A}
+.fine{margin-top:auto;align-self:flex-start;background:var(--red);color:#fff;padding:3px 12px;border-radius:6px;font-weight:600;font-size:14px}
+.tags{font-size:13px;color:var(--mute)}
+mark{background:#F2C230;border-radius:3px}
+footer{text-align:center;color:var(--mute);font-size:13px;padding-bottom:28px}
+footer a{color:inherit}
+</style>
+</head>
+<body>
+<header><h1 id="name">Best City</h1><p id="tag"></p></header>
+<div class="bar"><div class="wrap">
+<input id="q" type="search" placeholder="ค้นหากฎ เช่น rdm, ค่าปรับ, หมอ, ขับรถ" aria-label="ค้นหากฎ">
+<div class="chips" id="chips"></div></div></div>
+<main class="wrap" style="padding:0 16px"><div id="count"></div><div id="list"></div></main>
+<footer><a href="admin.html">สำหรับแอดมิน</a></footer>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let D,cat='all';
+fetch('rules.json?'+Date.now()).then(r=>r.json()).then(d=>{D=d;init()})
+ .catch(()=>$('#list').textContent='โหลด rules.json ไม่ได้ ต้องเปิดผ่านเว็บ (GitHub Pages) ไม่ใช่เปิดไฟล์ตรงๆ');
+function init(){
+  document.title=D.server+' | กฎการเล่น';$('#name').textContent=D.server;$('#tag').textContent=D.tagline||'';
+  const all=[{id:'all',name:'ทั้งหมด',icon:''},...D.categories];
+  $('#chips').innerHTML=all.map(c=>`<button class="chip" data-id="${esc(c.id)}" aria-pressed="${c.id==='all'}">${esc(c.icon)} ${esc(c.name)}</button>`).join('');
+  $('#chips').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;cat=b.dataset.id;
+    document.querySelectorAll('.chip').forEach(x=>x.setAttribute('aria-pressed',x===b));render()};
+  $('#q').oninput=render;render();
+}
+function render(){
+  const terms=$('#q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  const C=Object.fromEntries(D.categories.map(c=>[c.id,c]));
+  const hit=D.rules.filter(r=>(cat==='all'||r.cat===cat)&&terms.every(t=>
+    [r.title,r.text,r.fine,(r.tags||[]).join(' '),C[r.cat]?.name].join(' ').toLowerCase().includes(t)));
+  const hl=s=>{s=esc(s);terms.forEach(t=>{s=s.replace(new RegExp('('+esc(t).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark>$1</mark>')});return s};
+  $('#count').textContent=`พบ ${hit.length} ข้อ`;
+  $('#list').innerHTML=hit.map(r=>{const c=C[r.cat]||{name:'',icon:'📌',color:'#555'};
+    const pic=r.image?`<img src="${esc(r.image)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=ph>${esc(c.icon)}</div>'">`:`<div class="ph">${esc(c.icon)}</div>`;
+    return `<article class="card" style="--c:${esc(c.color)}">${pic}<div class="body"><div class="cat">${esc(c.icon)} ${esc(c.name)}</div><h2>${hl(r.title)}</h2><p>${hl(r.text)}</p>${r.fine?`<span class="fine">ค่าปรับ/บทลงโทษ: ${hl(r.fine)}</span>`:''}${(r.tags||[]).length?`<div class="tags">#${(r.tags).map(esc).join(' #')}</div>`:''}</div></article>`}).join('')||'<p>ไม่พบกฎที่ค้นหา</p>';
+}
+</script>
+</body>
+</html>

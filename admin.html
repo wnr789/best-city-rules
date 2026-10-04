@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Best City | แอดมิน</title>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;700&family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EEF0EC;--ink:#1B2420;--green:#0F6B4F;--red:#C8312B;--line:#D5DAD4;--mute:#5E6B64}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "Noto Sans Thai",system-ui,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:16px}
+h1{font:700 26px Prompt,sans-serif;margin:0}h3{font:500 17px Prompt,sans-serif;margin:0 0 8px}
+section{background:#fff;border-radius:10px;padding:16px;margin:14px 0}
+input,select,textarea,button{font:inherit}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+label{display:block;font-weight:600;margin-top:10px}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--green);color:#fff;cursor:pointer}
+button.alt{background:#fff;color:var(--ink);border:1px solid var(--line)}button.del{background:var(--red)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:1 1 150px}.row>button{flex:none}
+.item{display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding:8px 0}
+.item b{flex:1}.item small{color:var(--mute)}
+#msg{position:sticky;top:0;background:#F2C230;padding:8px 16px;display:none;z-index:9;font-weight:600}
+dialog{border:0;border-radius:12px;width:min(560px,94vw);padding:18px}
+dialog::backdrop{background:#0008}
+</style>
+</head>
+<body>
+<div id="msg"></div>
+<div class="wrap">
+<h1>แอดมิน Best City <a href="index.html" style="font:14px 'Noto Sans Thai'">← หน้าผู้ชม</a></h1>
+
+<section id="login">
+  <h3>เชื่อมต่อ GitHub</h3>
+  <p style="margin:0;color:var(--mute)">ใช้ Fine-grained token ที่ให้สิทธิ์ Contents: Read and write เฉพาะ repo นี้ เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น</p>
+  <div class="row"><div><label>Repo (ชื่อผู้ใช้/ชื่อrepo)<input id="repo" placeholder="myname/best-city-rules"></label></div>
+  <div><label>Branch<input id="branch" value="main"></label></div></div>
+  <label>Token<input id="token" type="password" placeholder="github_pat_..."></label>
+  <div class="row" style="margin-top:12px"><button onclick="connect()">เชื่อมต่อและโหลดกฎ</button>
+  <button class="alt" onclick="loadLocal()">ลองโหลดจาก rules.json (ไม่บันทึกขึ้น GitHub)</button></div>
+</section>
+
+<div id="app" hidden>
+  <section><h3>หมวดหมู่</h3><div id="cats"></div><button class="alt" onclick="addCat()" style="margin-top:8px">+ เพิ่มหมวด</button></section>
+  <section><h3>กฎทั้งหมด</h3>
+    <div class="row"><input id="f" placeholder="ค้นหาในรายการ" oninput="renderRules()"><button onclick="edit()">+ เพิ่มกฎ</button></div>
+    <div id="rules"></div></section>
+  <section class="row"><button id="saveGh" onclick="save()">บันทึกขึ้น GitHub</button>
+    <button class="alt" onclick="download()">ดาวน์โหลด rules.json</button>
+    <button class="alt" onclick="$('#imp').click()">นำเข้า JSON</button>
+    <button class="alt" onclick="logout()">ออกจากระบบ</button>
+    <input id="imp" type="file" accept=".json" hidden></section>
+</div>
+
+<dialog id="dlg"><form method="dialog" onsubmit="return false">
+  <h3 id="dt">กฎ</h3>
+  <label>หมวด<select id="e-cat"></select></label>
+  <label>หัวข้อ<input id="e-title"></label>
+  <label>รายละเอียด<textarea id="e-text" rows="4"></textarea></label>
+  <label>ค่าปรับ / บทลงโทษ<input id="e-fine" placeholder="เช่น ปรับ $5,000"></label>
+  <label>Keyword (คั่นด้วย , )<input id="e-tags" placeholder="rdm, ฆ่า"></label>
+  <label>รูปภาพ (ลิงก์ หรือ images/ชื่อไฟล์)<input id="e-image"></label>
+  <label>อัปโหลดรูป (ต้องเชื่อม GitHub)<input id="e-file" type="file" accept="image/*"></label>
+  <div class="row" style="margin-top:14px"><button onclick="commitRule()">ตกลง</button><button class="alt" onclick="$('#dlg').close()">ยกเลิก</button></div>
+</form></dialog>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let D,sha,cfg=JSON.parse(localStorage.getItem('bc_cfg')||'{}'),cur=null,dirty=false;
+const api=p=>`https://api.github.com/repos/${cfg.repo}/contents/${p}`;
+const hd=()=>({Authorization:'Bearer '+cfg.token,Accept:'application/vnd.github+json'});
+const b64=s=>btoa(unescape(encodeURIComponent(s)));
+const toast=t=>{const m=$('#msg');m.textContent=t;m.style.display='block';setTimeout(()=>m.style.display='none',3500)};
+const mark=()=>dirty=true;
+onbeforeunload=e=>{if(dirty){e.preventDefault();e.returnValue=''}};
+if(cfg.repo){$('#repo').value=cfg.repo;$('#branch').value=cfg.branch||'main';$('#token').value=cfg.token||''}
+
+async function connect(){
+  cfg={repo:$('#repo').value.trim(),branch:$('#branch').value.trim()||'main',token:$('#token').value.trim()};
+  try{
+    const r=await fetch(api('rules.json')+'?ref='+cfg.branch,{headers:hd()});
+    if(!r.ok)throw new Error(r.status===401||r.status===403?'Token ไม่ถูกต้องหรือไม่มีสิทธิ์':'ไม่พบ rules.json ใน repo/branch นี้');
+    const j=await r.json();sha=j.sha;
+    D=JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g,'')))));
+    localStorage.setItem('bc_cfg',JSON.stringify(cfg));start();toast('โหลดกฎจาก GitHub แล้ว');
+  }catch(e){toast(e.message)}
+}
+async function loadLocal(){cfg={};try{D=await (await fetch('rules.json?'+Date.now())).json();start();toast('โหมดออฟไลน์: ดาวน์โหลดไฟล์แล้วนำไปอัปโหลดเอง')}catch{toast('โหลดไม่ได้')}}
+function start(){$('#app').hidden=false;$('#saveGh').hidden=!cfg.token;renderCats();renderRules()}
+function logout(){localStorage.removeItem('bc_cfg');location.reload()}
+
+function renderCats(){
+  $('#cats').innerHTML=D.categories.map((c,i)=>`<div class="item"><b>${esc(c.icon)} ${esc(c.name)}</b><small>${D.rules.filter(r=>r.cat===c.id).length} ข้อ</small><input type="color" value="${esc(c.color)}" style="width:50px;padding:2px" onchange="D.categories[${i}].color=this.value;mark()"><button class="alt" onclick="renameCat(${i})">แก้ชื่อ</button><button class="del" onclick="delCat(${i})">ลบ</button></div>`).join('');
+}
+function addCat(){const name=prompt('ชื่อหมวด');if(!name)return;const icon=prompt('ไอคอน (อิโมจิ)','📌')||'📌';
+  D.categories.push({id:'c'+Date.now(),name,icon,color:'#0F6B4F'});mark();renderCats();renderRules()}
+function renameCat(i){const c=D.categories[i];const n=prompt('ชื่อหมวด',c.name);if(n){c.name=n;c.icon=prompt('ไอคอน',c.icon)||c.icon;mark();renderCats();renderRules()}}
+function delCat(i){const c=D.categories[i];if(D.rules.some(r=>r.cat===c.id))return toast('ลบไม่ได้ ยังมีกฎในหมวดนี้');
+  if(confirm('ลบหมวด '+c.name+'?')){D.categories.splice(i,1);mark();renderCats()}}
+
+function renderRules(){
+  const f=$('#f').value.toLowerCase(),C=Object.fromEntries(D.categories.map(c=>[c.id,c]));
+  $('#rules').innerHTML=D.rules.map((r,i)=>[r,i]).filter(([r])=>(r.title+r.text+(r.tags||[]).join()).toLowerCase().includes(f))
+   .map(([r,i])=>`<div class="item"><b>${esc(r.title)}<br><small>${esc(C[r.cat]?.name||'-')} · ${esc(r.fine||'ไม่มีค่าปรับ')}</small></b><button class="alt" onclick="edit(${i})">แก้ไข</button><button class="del" onclick="delRule(${i})">ลบ</button></div>`).join('')||'<p>ยังไม่มีกฎ</p>';
+}
+function edit(i){cur=i??null;const r=i==null?{cat:D.categories[0]?.id,title:'',text:'',fine:'',tags:[],image:''}:D.rules[i];
+  $('#e-cat').innerHTML=D.categories.map(c=>`<option value="${esc(c.id)}">${esc(c.icon)} ${esc(c.name)}</option>`).join('');
+  $('#e-cat').value=r.cat;$('#e-title').value=r.title;$('#e-text').value=r.text;$('#e-fine').value=r.fine||'';
+  $('#e-tags').value=(r.tags||[]).join(', ');$('#e-image').value=r.image||'';$('#e-file').value='';$('#dlg').showModal()}
+async function commitRule(){
+  const t=$('#e-title').value.trim();if(!t)return toast('ใส่หัวข้อกฎก่อน');
+  let img=$('#e-image').value.trim();const file=$('#e-file').files[0];
+  if(file){
+    if(!cfg.token)return toast('ต้องเชื่อม GitHub ก่อนจึงอัปโหลดรูปได้');
+    const name='images/'+Date.now()+'-'+file.name.replace(/[^\w.-]/g,'');
+    const data=await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.readAsDataURL(file)});
+    const r=await fetch(api(name),{method:'PUT',headers:hd(),body:JSON.stringify({message:'upload '+name,content:data,branch:cfg.branch})});
+    if(!r.ok)return toast('อัปโหลดรูปไม่สำเร็จ');img=name;
+  }
+  const r={id:cur==null?'r'+Date.now():D.rules[cur].id,cat:$('#e-cat').value,title:t,text:$('#e-text').value.trim(),fine:$('#e-fine').value.trim(),
+    image:img,tags:$('#e-tags').value.split(',').map(s=>s.trim()).filter(Boolean)};
+  cur==null?D.rules.push(r):D.rules[cur]=r;mark();$('#dlg').close();renderCats();renderRules();
+}
+function delRule(i){if(confirm('ลบกฎ "'+D.rules[i].title+'"?')){D.rules.splice(i,1);mark();renderCats();renderRules()}}
+
+async function save(){
+  const body={message:'update rules '+new Date().toISOString(),content:b64(JSON.stringify(D,null,2)),sha,branch:cfg.branch};
+  const r=await fetch(api('rules.json'),{method:'PUT',headers:hd(),body:JSON.stringify(body)});
+  if(!r.ok)return toast('บันทึกไม่สำเร็จ ('+r.status+') ลองโหลดใหม่แล้วแก้อีกครั้ง');
+  sha=(await r.json()).content.sha;dirty=false;toast('บันทึกแล้ว เว็บจะอัปเดตภายใน 1-2 นาที');
+}
+function download(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(D,null,2)],{type:'application/json'}));a.download='rules.json';a.click()}
+$('#imp').onchange=async e=>{try{D=JSON.parse(await e.target.files[0].text());mark();start()}catch{toast('ไฟล์ JSON ไม่ถูกต้อง')}};
+</script>
+</body>
+</html>
